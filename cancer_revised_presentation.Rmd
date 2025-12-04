@@ -1,0 +1,323 @@
+---
+title: "Cancer Analysis"
+output: 
+  flexdashboard::flex_dashboard:
+    theme: 
+      version: 4
+      bootswatch: lumen
+    orientation: columns
+    vertical_layout: fill
+    source_code: embed
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(DT)
+library(tidyverse)
+library(pacman)
+library(dplyr)
+library(DataExplorer)
+library(car)
+library(leaps)
+library(MASS)
+```
+
+Introduction
+===
+
+Column {data-width=450}
+---
+### Background
+**Title:** Socioeconomic and Demographic Impacts on Average Cancer Diagnosis and Deaths per Year in the US
+
+**Author:** Alexa Neal
+
+In this project, I wanted to explore how various non-biological factors are related to the average number of cancer cases diagnosed, and the number average cancer deaths in the US. [One study](https://pmc.ncbi.nlm.nih.gov/articles/PMC12455370/) found that individuals on Medicare with low incomes had greater challenges in affording their healthcare (Park et al. 2025), highlighting that factors other than genetics and biology can impact health outcomes. This also showcases how certain populations are vunerable to worse outcome due to lack of access to healthcare. Discerning these variables can be useful in understanding barriers to important medical resources and how to improve access. 
+
+### Research Questions
+To explore these concepts, I found two data sets on [Kaggle](https://www.kaggle.com/datasets/varunraskar/cancer-regression), one containing health-related information and the other containing demographic information, and combined them. I utilized exploratory data analysis and multiple linear regression models to understand what factors correlate with average number of cancer cases diagnosed and the average number of cancer deaths per year. My research questions were: 
+
+1. Which socioeconomic and demographic factors are most strongly associated with the average number of cancer diagnoses per year across U.S. counties?
+2. Which socioeconomic and demographic factors are most strongly associated with the average number of cancer deaths per year across U.S. counties?
+
+
+Column {.tabset data-width=550}
+---
+### Variables of Interest
+
+- avganncount: Average number of cancer cases diagnosed annually
+
+- avgdeathsperyear: Average number of deaths due to cancer per year
+
+- medincome: Median income in the region
+
+- povertypercent: Percentage of population below the poverty line
+
+- pctprivatecoveragealone: Percentage of population covered by private health insurance alone
+
+- pctempprivcoverage: Percentage of population covered by employee-provided private health insurance
+
+- pctpubliccoveragealone: Percentage of population covered by public health insurance only
+
+- pctwhite: Percentage of White population
+
+- pctblack: Percentage of Black population
+
+- pctasian: Percentage of Asian population
+
+
+### Other Variables
+
+- target_deathrate: Target death rate due to cancer
+
+- incidencerate: Incidence rate of cancer
+
+- popest2015: Estimated population in 2015
+
+- studypercap: Per capita number of cancer-related clinical trials conducted
+
+- binnedinc: Binned median income
+
+- medianage: Median age in the region
+
+- pctpubliccoverage: Percentage of population covered by public health insurance
+
+- pctotherrace: Percentage of population belonging to other races
+
+- pctmarriedhouseholds: Percentage of married households
+
+- birthrate: Birth rate in the region
+
+- statefips: The FIPS code representing the state
+
+- countyfips: The FIPS code representing the county or census area within the state
+
+- avghouseholdsize: The average household size in the region
+
+- geography: The geographical location, typically represented as the county or census area name followed by the state name
+
+### Data Cleaning
+
+Before performing any analysis, I used plot_intro() to visualize the data set and realized there were missing values. I utilized plot_missing() to see what columns these values were in. To clean up the data, I removed missing values from pctprivatecoveragealone and pctemployed16_over as they were variables of interest to me. I also completely removed pctsomecol18_24 due to the large number of missing values. 
+
+#### Introduction to Data
+
+```{r cleaning}
+## reading + joining the data
+household <- read.csv("C:/Users/write/OneDrive/Desktop/school/regression files/avg-household-size.csv")
+cancer_reg <- read.csv("C:/Users/write/OneDrive/Desktop/school/regression files/cancer_reg (1).csv")
+cancer <- left_join(cancer_reg, household)
+
+plot_intro(cancer)
+```
+
+
+#### Missing Value Distribution
+
+```{r missing value distribution}
+
+plot_missing(cancer)
+
+cancer <- cancer %>% 
+  drop_na(pctprivatecoveragealone, pctemployed16_over) %>%  
+  dplyr::select(-c(pctsomecol18_24))
+```
+
+EDA
+===
+
+Column {.tabset data-width=600}
+---
+
+### Diagnosis
+
+```{r diagnosis histogram}
+ggplot(cancer, aes(x = avganncount)) +
+  geom_histogram(fill = "lightblue") + labs(title = "Distribution of Cancer Diagnoses",
+                          x = "Average Diagnoses Per Year", y = "Frequency")
+```
+
+### Deaths
+
+```{r death histogram}
+ggplot(cancer, aes(x = avgdeathsperyear)) +
+  geom_histogram(fill = "lightblue") + 
+  labs(title = "Distribution of Cancer Deaths",
+                          x = "Average Deaths Per Year", y = "Frequency")
+```
+
+### Insurance
+
+#### Average Diagnoses
+
+```{r insurance diagnosis}
+cancer$log_avganncount <- log(cancer$avganncount)
+
+pairs(~log_avganncount + pctprivatecoveragealone
+      + pctempprivcoverage + pctpubliccoveragealone, data = cancer)
+```
+
+#### Average Deaths
+
+```{r insurance death}
+cancer$log_avgdeathsperyear <- log(cancer$avgdeathsperyear)
+
+pairs(~log_avgdeathsperyear + pctprivatecoveragealone
+      + pctempprivcoverage + pctpubliccoveragealone, data = cancer)
+```
+
+### Income
+
+#### Average Diagnoses
+
+```{r income diagnoses}
+pairs(~log_avganncount + medincome + povertypercent, data = cancer)
+```
+
+#### Average Deaths
+
+```{r income death}
+pairs(~log_avgdeathsperyear + medincome + povertypercent, data = cancer)
+```
+
+### Race
+
+#### Average Diagnoses
+
+```{r race diagnoses}
+pairs(~log_avganncount + pctwhite + pctblack + pctasian,
+      data = cancer)
+```
+
+#### Average Deaths
+
+```{r race death}
+pairs(~log_avgdeathsperyear + pctwhite + pctblack + pctasian,
+      data = cancer)
+```
+
+
+### Correlation
+
+#### Average Diagnoses
+
+```{r diagnoses correlation}
+cor(cancer[,c("log_avganncount", "pctprivatecoveragealone", "pctempprivcoverage", "pctpubliccoveragealone",              "medincome", "povertypercent", "pctwhite", "pctblack", "pctasian")])
+```
+
+#### Average Deaths
+
+```{r death correlation}
+cor(cancer[,c("log_avgdeathsperyear", "pctprivatecoveragealone", "pctempprivcoverage", "pctpubliccoveragealone",              "medincome", "povertypercent", "pctwhite", "pctblack", "pctasian")])
+```
+
+
+Column {data-width=400}
+---
+### Analysis
+
+The distribution of average annual cancer diagnoses and average annual cancer deaths are both skewed right, indicating taking the log will be useful. For the rest of this analysis, I used the log of average annual cancer diagnoses and the log of average annual cancer deaths.
+
+Insurance has a low correlation with both the log of cancer diagnoses and the log of cancer deaths, with private and employee-provided coverage having a positive correlation, and public coverage having a negative correlation.
+
+Median income and poverty percentage have a low correlation with both the log of cancer diagnoses and the log of cancer deaths, with the former having a positive correlation, and the latter having a negative correlation.
+
+Race has a low correlation with both the log of cancer diagnoses and the log of cancer deaths, with the percentage of the White population having a negative correlation, and the percentage of Black and Asian populations having a positive correlation.
+
+The correlation coefficients confirm these observations. 
+
+
+Methods
+===
+
+Column {data-width = 500}
+---
+### Data Cleaning
+As mentioned previously, data cleaning was performed to remove missing observations from pctprivatecoveragealone and pctemployed16_over, and to completely remove pctsomecol18_24. Furthermore, incidencerate and and target_deathrate were removed since they represent aspects of cancer frequency or mortality already shown in my response variables (avganncount and avgdeathsperyear). Similarly, log(avgdeathsperyear) was removed from the model for log(avganncount), and vice versa. Before fitting the models, binnedinc, geography, statefips, and countyfips were removed since they are non-numerical and non-quantitative values. Finally, since the histograms of avganncount and avgdeathsperyear displayed a skewed right distribution, I used the log of both response variables to make the data better suited for linear regression. 
+
+### Models Fit 
+Since the predictors are continuous, linear regression was used, and the predictors were selected using backward variable selection. 
+
+- multiple linear regression for log(avganncount)
+- multiple linear regression for log(avgdeathsperyear)
+
+Modeling 
+===
+
+Column {.tabset data-width=600}
+---
+
+### Average Cancer Diagnoses
+
+```{r}
+cancer_diagnoses <- cancer %>%  
+  dplyr::select(-c(binnedinc, geography, statefips, countyfips, 
+                   avganncount, avgdeathsperyear, target_deathrate,
+                   incidencerate, log_avgdeathsperyear))
+
+full.cancer.diagnoses <- lm(log_avganncount ~ ., data = cancer_diagnoses)
+fit.backward.diagnoses <- stepAIC(full.cancer.diagnoses, direction = "backward", trace = FALSE)
+summary(fit.backward.diagnoses)
+```
+
+### Average Cancer Deaths
+
+```{r}
+cancer_deaths <- cancer %>%  
+  dplyr::select(-c(binnedinc, geography, statefips, countyfips, 
+            avganncount, avgdeathsperyear, target_deathrate,
+            incidencerate, log_avganncount))
+
+full.cancer.deaths <- lm(log_avgdeathsperyear ~ ., data = cancer_deaths)
+fit.backward.deaths <- stepAIC(full.cancer.deaths, direction = "backward", trace = FALSE)
+summary(fit.backward.deaths)
+```
+
+
+Column {data.width = 400}
+---
+### Analysis
+
+
+Conclusions
+===
+Column {data.width=500}
+---
+### Discussion
+
+### Limitations
+
+Column {data.width=500}
+---
+### Future Directions
+Other socioeconomic and demographic factors can be explored that were not present in this data set. For example, collecting data on the number of people who went through with treatment could correlate to the average number of cancer deaths per year. Furthermore, it would be important to know whether the number of people who went through treatment was related to the cost or availability of the treatment.
+
+Additionally, although the predictors were significant, the low R-squared value indicates that there are other variables not in the data that could correlate with cancer deaths and diagnoses. Genetics and other biological factors could be significantly impacting health outcomes relating to cancer.
+
+Author
+===
+
+Column {data-width=500}
+---
+### About the Author
+My name is Alexa Neal and I am a current senior at the University of Dayton. I am pursuing a Bachelor of Science in Premedicine, and minors in Data Analytics, Medicine and Society, and Neuroscience. My projected graduation is May 2026, and I will be attending medical school in the Fall of 2026.
+
+### AI Acknowledgement
+
+### Works Cited
+Park, S., & Fung, V. (2025). Health Care Affordability Problems by Income Level and Subsidy Eligibility in Medicare. JAMA network open, 8(9), e2532862. https://doi.org/10.1001/jamanetworkopen.2025.32862
+
+Column {data-width=500}
+---
+###
+
+```{r headshot}
+knitr::include_graphics("C:/Users/write/OneDrive/Desktop/photos/headshot.JPG")
+```
+
+
+
+
+
+
+
